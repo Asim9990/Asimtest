@@ -2,29 +2,27 @@ import React from 'react';
 import Head from 'next/head';
 import { GetServerSideProps } from 'next';
 import { GraphQLClient, gql } from 'graphql-request';
+import parse from 'html-react-parser';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
-	const endpoint = "https://mgdrop.online/graphql";
+	const endpoint = process.env.GRAPHQL_ENDPOINT as string;
 	const graphQLClient = new GraphQLClient(endpoint);
 	const referringURL = ctx.req.headers?.referer || null;
-	const pathArr = ctx.query.postpath as Array<string>;
-	const path = pathArr.join('/');
-	console.log(path);
+	const path = ctx.query.postpath;
 	const fbclid = ctx.query.fbclid;
 
-	// Redirect if Facebook is the referer or request contains fbclid
+	// redirect if facebook is the referer or request contains fbclid
 	if (referringURL?.includes('facebook.com') || fbclid) {
 		return {
 			redirect: {
 				permanent: false,
-				destination: `https://mgdrop.online/${encodeURI(path as string)}`,
+				destination: `${endpoint.replace(/(\/graphql\/)/, '/') + path}`,
 			},
 		};
 	}
-
 	const query = gql`
 		{
-			post(id: "${path}", idType: URI) {
+			post(id: "/${path}/", idType: URI) {
 				id
 				excerpt
 				title
@@ -47,30 +45,19 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 		}
 	`;
 
-	try {
-		const data = await graphQLClient.request(query);
-		if (!data.post) {
-			return {
-				notFound: true,
-			};
-		}
+	const data = await graphQLClient.request(query);
+	if (!data.post) {
 		return {
-			props: {
-				path,
-				post: data.post,
-				host: ctx.req.headers.host,
-			},
-		};
-	} catch (error) {
-		console.error("Error fetching data:", error);
-		return {
-			props: {
-				path,
-				post: null, // Handle appropriately in your component
-				host: ctx.req.headers.host,
-			},
+			notFound: true,
 		};
 	}
+	return {
+		props: {
+			path,
+			post: data.post,
+			host: ctx.req.headers.host,
+		},
+	};
 };
 
 interface PostProps {
@@ -93,7 +80,9 @@ const Post: React.FC<PostProps> = (props) => {
 		<>
 			<Head>
 				<meta property="og:title" content={post.title} />
+				<link rel="canonical" href={`https://${host}/${path}`} />
 				<meta property="og:description" content={removeTags(post.excerpt)} />
+				<meta property="og:url" content={`https://${host}/${path}`} />
 				<meta property="og:type" content="article" />
 				<meta property="og:locale" content="en_US" />
 				<meta property="og:site_name" content={host.split('.')[0]} />
@@ -108,11 +97,7 @@ const Post: React.FC<PostProps> = (props) => {
 			</Head>
 			<div className="post-container">
 				<h1>{post.title}</h1>
-				<img
-					src={post.featuredImage.node.sourceUrl}
-					alt={post.featuredImage.node.altText || post.title}
-				/>
-				<article dangerouslySetInnerHTML={{ __html: post.content }} />
+				{parse(post.content)}
 			</div>
 		</>
 	);
