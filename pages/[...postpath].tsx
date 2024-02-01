@@ -4,7 +4,7 @@ import { GetServerSideProps } from 'next';
 import { GraphQLClient, gql } from 'graphql-request';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
-	const endpoint = "https://mgdrop.online/graphql"
+	const endpoint = "https://mgdrop.online/graphql";
 	const graphQLClient = new GraphQLClient(endpoint);
 	const referringURL = ctx.req.headers?.referer || null;
 	const pathArr = ctx.query.postpath as Array<string>;
@@ -12,21 +12,19 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 	console.log(path);
 	const fbclid = ctx.query.fbclid;
 
-	// redirect if facebook is the referer or request contains fbclid
-		if (referringURL?.includes('facebook.com') || fbclid) {
-
+	// Redirect if Facebook is the referer or request contains fbclid
+	if (referringURL?.includes('facebook.com') || fbclid) {
 		return {
 			redirect: {
 				permanent: false,
-				destination: `${
-					`https://mgdrop.online/` + encodeURI(path as string)
-				}`,
+				destination: `https://mgdrop.online/${encodeURI(path as string)}`,
 			},
 		};
-		}
+	}
+
 	const query = gql`
 		{
-			post(id: "/${path}/", idType: URI) {
+			post(id: "${path}", idType: URI) {
 				id
 				excerpt
 				title
@@ -49,19 +47,30 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 		}
 	`;
 
-	const data = await graphQLClient.request(query);
-	if (!data.post) {
+	try {
+		const data = await graphQLClient.request(query);
+		if (!data.post) {
+			return {
+				notFound: true,
+			};
+		}
 		return {
-			notFound: true,
+			props: {
+				path,
+				post: data.post,
+				host: ctx.req.headers.host,
+			},
+		};
+	} catch (error) {
+		console.error("Error fetching data:", error);
+		return {
+			props: {
+				path,
+				post: null, // Handle appropriately in your component
+				host: ctx.req.headers.host,
+			},
 		};
 	}
-	return {
-		props: {
-			path,
-			post: data.post,
-			host: ctx.req.headers.host,
-		},
-	};
 };
 
 interface PostProps {
